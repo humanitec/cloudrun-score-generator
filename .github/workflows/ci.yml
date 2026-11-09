@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: | 
+          go vet ./...
+          go test -race -cover ./...
+      - name: Install addlicense
+        run: go install github.com/google/addlicense@b289835c0741ba2fb92dd5f61af070e79c69a55e # v1.2.0
+      - name: Check license headers
+        run: addlicense -check -l apache -c "Ternki GmbH" -ignore '**/*.yaml' -ignore '**/*.yml' .
