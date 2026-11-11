@@ -69,10 +69,6 @@ func (g gsmAPI) ListSecrets(ctx context.Context, req *secretmanagerpb.ListSecret
 // Client reads and writes the secrets of Cloud Run services in Google Secret Manager.
 // Each secret is labelled with the service it belongs to.
 //
-// A Client is meant for a single deployment run: it remembers which secrets
-// SaveSecret wrote, so that DeleteUnused can remove the rest. Create a new
-// Client for each run. A Client is not safe for concurrent use.
-//
 // The underlying Google client is built on first use, so that converting a
 // workload which holds no secrets needs neither Google credentials nor a
 // project and region.
@@ -82,9 +78,6 @@ type Client struct {
 	managedBy     string
 	clientOptions []option.ClientOption
 	api           api
-
-	// saved lists, per service, the secrets the current deployment holds.
-	saved map[string][]string
 }
 
 // Option configures a Client.
@@ -117,7 +110,6 @@ func New(project, region string, opts ...Option) *Client {
 		project:   project,
 		region:    region,
 		managedBy: DefaultManagedBy,
-		saved:     map[string][]string{},
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -132,9 +124,6 @@ func (c *Client) ensureClient(ctx context.Context) error {
 	}
 	if c.project == "" {
 		return errors.New("no project to store the secrets in")
-	}
-	if c.region == "" {
-		return errors.New("no region to replicate the secrets to")
 	}
 
 	client, err := gsm.NewClient(ctx, c.clientOptions...)
@@ -175,6 +164,9 @@ func (c *Client) filter(service string) string {
 
 // SaveSecret creates the service's secret if it does not exist yet and returns its version.
 func (c *Client) SaveSecret(ctx context.Context, service, name, value string) (string, error) {
+	if c.region == "" {
+		return "", errors.New("no region to replicate the secrets to")
+	}
 	if err := c.ensureClient(ctx); err != nil {
 		return "", err
 	}
@@ -201,7 +193,6 @@ func (c *Client) SaveSecret(ctx context.Context, service, name, value string) (s
 	if err != nil && status.Code(err) != codes.AlreadyExists {
 		return "", fmt.Errorf("creating secret %s: %w", name, err)
 	}
-	c.saved[service] = append(c.saved[service], name)
 
 	// Add a new version only if the value changed. A new version would force a new Cloud Run
 	// revision even when nothing changed.
@@ -223,10 +214,15 @@ func (c *Client) SaveSecret(ctx context.Context, service, name, value string) (s
 	return path.Base(added.GetName()), nil
 }
 
-// DeleteUnused deletes the service's secrets that SaveSecret did not write during this run.
-// In the destroy case all secrets are deleted.
+// DeleteUnused deletes the secrets saved previously for the service, except
+// those listed in `keep`.
+//
+// Call this method only after the Cloud Run Service deployment succeeded: until
+// then the running revision still uses the old secrets. With an empty
+// keep, all service's secrets are deleted, as when the service is destroyed.
+//
 // Failures are joined - one secret that won't delete does not stop the rest.
-func (c *Client) DeleteUnused(ctx context.Context, service string) error {
+func (c *Client) DeleteUnused(ctx context.Context, service string, keep []string) error {
 	if err := c.ensureClient(ctx); err != nil {
 		return err
 	}
@@ -242,7 +238,7 @@ func (c *Client) DeleteUnused(ctx context.Context, service string) error {
 	var errs []error
 	for _, secret := range secrets {
 		name := path.Base(secret.GetName())
-		if slices.Contains(c.saved[service], name) {
+		if slices.Contains(keep, name) {
 			continue
 		}
 		err := c.api.DeleteSecret(ctx, &secretmanagerpb.DeleteSecretRequest{Name: secret.GetName()})
