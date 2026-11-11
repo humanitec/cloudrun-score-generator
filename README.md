@@ -13,8 +13,16 @@ can be combined with any `score.Normalizer` and `score.Provisioner`.
 
 ## Installation
 
+As a library:
+
 ```sh
 go get github.com/humanitec/cloudrun-score-generator@latest
+```
+
+As a command line tool:
+
+```sh
+go install github.com/humanitec/cloudrun-score-generator/cmd/score-cloudrun@latest
 ```
 
 ## Packages
@@ -164,16 +172,24 @@ secrets := secretmanager.New("my-gcp-project", "europe-west1",
 ```
 
 To remove secrets that earlier deployments of a service created but the current one no longer
-uses, call `DeleteUnused` after `Generate`:
+uses, call `DeleteUnused` with the secrets the deployed manifest references. Call it only after
+the manifest has been deployed: until then the running revision still reads the old secrets.
 
 ```go
-if err := secrets.DeleteUnused(ctx, cloudrun.ServiceName(&workload)); err != nil {
+manifest := manifests[cloudrun.ServiceManifestKey]
+// ... deploy the manifest ...
+keep, err := cloudrun.ReferencedSecrets(manifest)
+if err != nil {
+	log.Fatal(err)
+}
+if err := secrets.DeleteUnused(ctx, cloudrun.ServiceName(&workload), keep); err != nil {
 	log.Fatal(err)
 }
 ```
 
-`DeleteUnused` keeps the secrets that `SaveSecret` wrote through the same `Client`. Use a new
-`Client` for each deployment. A `Client` is not safe for concurrent use.
+`DeleteUnused` deletes secrets labeled with `managed-by=<WithManagedBy value, default score2cloudrun>` and `service=<service-name>`
+except those listed in `keep`. Pass empty `keep` to delete all secrets after the service has been
+deleted.
 
 ### Volumes
 
@@ -200,3 +216,44 @@ Cloud Run limitations:
   Name the port `http1` or `h2c` to choose the protocol.
 - **Files:** file content can only be mounted from a Secret Manager secret, and only one file per
   directory ([details](https://cloud.google.com/run/docs/configuring/services/secrets#limitations)).
+
+## Command line tool
+
+`score-cloudrun generate` prints the service manifest as YAML, or as JSON with `--output json`.
+The workload and the substitutions are read from `.yaml`, `.yml` or `.json` files. The format is
+chosen by the file extension. The substitutions file maps placeholders to values, in the format
+of `score.Substitutions`:
+
+```yaml
+resources.db.host:
+  value: 10.0.0.5
+resources.db.password:
+  secret:
+    type: direct
+    value: s3cr3t
+```
+
+The tool runs no normalizer or provisioner. Only `${resources.*}` placeholders are resolved.
+
+By default, `generate` is a dry run. Secrets are not saved, and the manifest references their
+`latest` version, which is useful to preview the manifest without Google credentials. To deploy
+the manifest, pass `--save-secrets` so the secrets are stored in Secret Manager:
+
+```sh
+score-cloudrun generate --file score.yaml --substitutions subs.yaml --service-name hello-world-dev \
+  --save-secrets --project my-gcp-project --region europe-west1 > service.yaml
+gcloud run services replace service.yaml --region europe-west1
+score-cloudrun delete-unused-secrets --manifest service.yaml --project my-gcp-project
+```
+
+`delete-unused-secrets` deletes the service's secrets that the deployed manifest no longer
+references. Run it only after the deployment succeeded. To delete all secrets of a service, for
+example after deleting the service:
+
+```sh
+gcloud run services delete hello-world-dev --region europe-west1
+score-cloudrun delete-unused-secrets --service hello-world-dev --all --project my-gcp-project
+```
+
+Run `score-cloudrun --help` or `score-cloudrun COMMAND --help` for all flags. The tool exits
+with code 2 for usage errors and 1 for other errors.
