@@ -5,8 +5,8 @@ go 1.27.3
 require (
 	cloud.google.com/go/secretmanager v1.21.0
 	github.com/googleapis/gax-go/v2 v2.23.0
-	github.com/score-spec/score-go v1.20.0
-	github.com/stretchr/testify v1.11.1
+	github.com/score-spec/score-go/v2 v2.0.0-20261110193200-f67f00bdec36
+	github.com/stretchr/testify v1.12.1
 	google.golang.org/api v0.287.1
 	google.golang.org/grpc v1.83.2
 	k8s.io/api v0.35.7
@@ -47,6 +47,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
@@ -61,7 +62,6 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260630182238-925bb5da69e7 // indirect
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/client-go v0.35.7 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect

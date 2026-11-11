@@ -20,12 +20,10 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/score-spec/score-go/types"
+	"github.com/score-spec/score-go/v2/score"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	servingv1 "knative.dev/serving/pkg/apis/serving/v1"
-
-	"github.com/humanitec/cloudrun-score-generator/score"
 )
 
 // Platform defines a target platform for which K8s objects are generated.
@@ -61,7 +59,7 @@ func NewGenerator(secrets SecretSaver) *Generator {
 }
 
 // Generate generates a Cloud Run Service manifest from the score spec and the substitution map.
-func (p *Generator) Generate(ctx context.Context, spec *types.Workload, substitutions map[string]score.SubValue) (map[string][]byte, error) {
+func (p *Generator) Generate(ctx context.Context, spec *score.Workload, substitutions score.Substitutions) (map[string][]byte, error) {
 	if spec == nil {
 		return nil, fmt.Errorf("no workload to generate a Cloud Run service from")
 	}

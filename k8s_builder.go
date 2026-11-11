@@ -25,27 +25,25 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/score-spec/score-go/types"
+	"github.com/score-spec/score-go/v2/score"
 	corev1 "k8s.io/api/core/v1"
 	k8s "k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-
-	"github.com/humanitec/cloudrun-score-generator/score"
 )
 
 const volumeResourceType = "volume"
 
 // k8sBuilder builds Kubernetes objects from a Score workload.
 type k8sBuilder struct {
-	workload      types.Workload
-	substitutions map[string]score.SubValue
+	workload      score.Workload
+	substitutions score.Substitutions
 	secrets       SecretSaver
 	serviceName   string
 }
 
 // newK8sBuilder returns a builder for the workload. serviceName names the secrets and file volumes.
-func newK8sBuilder(workload types.Workload, substitutions map[string]score.SubValue, secrets SecretSaver, serviceName string) *k8sBuilder {
+func newK8sBuilder(workload score.Workload, substitutions score.Substitutions, secrets SecretSaver, serviceName string) *k8sBuilder {
 	return &k8sBuilder{
 		workload:      workload,
 		substitutions: substitutions,
@@ -62,7 +60,7 @@ func (b *k8sBuilder) EnvVar(ctx context.Context, containerName string) ([]corev1
 		placeholderStrs := map[string]string{}
 		isSecret := false
 		for _, placeholder := range placeholders {
-			output, err := score.ResolvePlaceholder(placeholder, b.substitutions)
+			output, err := b.substitutions.Resolve(placeholder)
 			if err != nil {
 				return nil, err
 			}
@@ -154,7 +152,7 @@ func (b *k8sBuilder) Volumes() (map[string][]corev1.VolumeMount, []corev1.Volume
 			volName := strings.ReplaceAll(placeholders[0], ".", "-")
 
 			if _, exists := volumes[volName]; !exists {
-				output, err := score.ResolvePlaceholder(placeholders[0], b.substitutions)
+				output, err := b.substitutions.Resolve(placeholders[0])
 				if err != nil {
 					return nil, nil, fmt.Errorf("resolving volume resource %s: %w", placeholders[0], err)
 				}
@@ -206,12 +204,12 @@ func (b *k8sBuilder) ContainerFiles(ctx context.Context) (map[string][]corev1.Vo
 	volumeMounts := map[string][]corev1.VolumeMount{}
 
 	for containerName, container := range b.workload.Containers {
-		dirs := map[string]map[string]*types.ContainerFile{}
+		dirs := map[string]map[string]*score.ContainerFile{}
 		for filePath, fileObj := range container.Files {
 			dir, name := path.Split(filePath)
 			dir = path.Clean(dir)
 			if _, exists := dirs[dir]; !exists {
-				dirs[dir] = map[string]*types.ContainerFile{}
+				dirs[dir] = map[string]*score.ContainerFile{}
 			}
 			dirs[dir][name] = &fileObj
 		}
@@ -376,7 +374,7 @@ func (b *k8sBuilder) Pod(ctx context.Context) (*corev1.Pod, error) {
 // the file.
 //
 // A file with a secret in it is a direct secret. Only direct secrets are supported.
-func (b *k8sBuilder) ExpandFile(file types.ContainerFile, containerName string) (*score.SubValue, error) {
+func (b *k8sBuilder) ExpandFile(file score.ContainerFile, containerName string) (*score.SubValue, error) {
 	if file.Content == nil {
 		return nil, fmt.Errorf("content missing")
 	}
@@ -387,7 +385,7 @@ func (b *k8sBuilder) ExpandFile(file types.ContainerFile, containerName string) 
 	placeholderStrs := map[string]string{}
 	isOutputSecret := false
 	for _, placeholder := range placeholders {
-		output, err := score.ResolvePlaceholder(placeholder, b.substitutions)
+		output, err := b.substitutions.Resolve(placeholder)
 		if err != nil {
 			return nil, err
 		}
@@ -407,7 +405,7 @@ func (b *k8sBuilder) ExpandFile(file types.ContainerFile, containerName string) 
 		return nil, err
 	}
 	if isOutputSecret {
-		return &score.SubValue{Secret: &score.SecretRef{Value: expandedFile, Type: score.DirectSecretType}}, nil
+		return &score.SubValue{Secret: &score.SecretRef{Value: expandedFile, Type: score.SecretTypeDirect}}, nil
 	}
 	return &score.SubValue{Value: expandedFile}, nil
 }
@@ -415,7 +413,7 @@ func (b *k8sBuilder) ExpandFile(file types.ContainerFile, containerName string) 
 // secretValue returns the value of a secret.
 func secretValue(secret *score.SecretRef) (string, error) {
 	switch secret.Type {
-	case score.DirectSecretType:
+	case score.SecretTypeDirect:
 		if secret.Value == nil {
 			return "", fmt.Errorf("direct secret has no value")
 		}
@@ -427,7 +425,7 @@ func secretValue(secret *score.SecretRef) (string, error) {
 	}
 }
 
-func k8sResourceRequirementsFromScore(resources *types.ContainerResources) (corev1.ResourceRequirements, error) {
+func k8sResourceRequirementsFromScore(resources *score.ContainerResources) (corev1.ResourceRequirements, error) {
 	var resourceReqs corev1.ResourceRequirements
 	if resources != nil {
 		var err error
@@ -447,7 +445,7 @@ func k8sResourceRequirementsFromScore(resources *types.ContainerResources) (core
 	return resourceReqs, nil
 }
 
-func k8sProbeFromScore(scoreProbe *types.ContainerProbe) (*corev1.Probe, error) {
+func k8sProbeFromScore(scoreProbe *score.ContainerProbe) (*corev1.Probe, error) {
 	if scoreProbe == nil {
 		return nil, nil
 	}
@@ -487,7 +485,7 @@ func k8sProbeFromScore(scoreProbe *types.ContainerProbe) (*corev1.Probe, error) 
 	return &probe, nil
 }
 
-func k8sResourceListFromScore(input *types.ResourcesLimits) (corev1.ResourceList, error) {
+func k8sResourceListFromScore(input *score.ResourcesLimits) (corev1.ResourceList, error) {
 	var err error
 	output := corev1.ResourceList{}
 	if input.Cpu != nil {
