@@ -17,8 +17,13 @@ package cloudrun
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"regexp"
+	"slices"
 	"strings"
+
+	servingv1 "knative.dev/serving/pkg/apis/serving/v1"
+	"sigs.k8s.io/yaml"
 )
 
 // illegalChars matches characters not allowed in a Google Secret Manager
@@ -42,4 +47,30 @@ func secretID(workloadName, containerName, kind, key string) string {
 		name = name[:maxLen]
 	}
 	return name + "_" + suffix
+}
+
+// ReferencedSecrets returns the sorted, unique names of the Secret Manager secrets that a
+// Cloud Run service manifest references in environment variables and secret volumes.
+func ReferencedSecrets(manifest []byte) ([]string, error) {
+	var service servingv1.Service
+	if err := yaml.Unmarshal(manifest, &service); err != nil {
+		return nil, fmt.Errorf("parsing the service manifest: %w", err)
+	}
+
+	spec := service.Spec.Template.Spec
+	var names []string
+	for _, container := range spec.Containers {
+		for _, env := range container.Env {
+			if env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
+				names = append(names, env.ValueFrom.SecretKeyRef.Name)
+			}
+		}
+	}
+	for _, volume := range spec.Volumes {
+		if volume.Secret != nil {
+			names = append(names, volume.Secret.SecretName)
+		}
+	}
+	slices.Sort(names)
+	return slices.Compact(names), nil
 }

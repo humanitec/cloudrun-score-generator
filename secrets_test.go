@@ -15,11 +15,16 @@
 package cloudrun
 
 import (
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/score-spec/score-go/v2/score"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 )
 
 // validSecretID is what Google Secret Manager accepts as a secret ID.
@@ -97,4 +102,58 @@ func TestNameDistinguishesAmbiguousParts(t *testing.T) {
 			)
 		})
 	}
+}
+
+// The secrets a manifest references are exactly the ones Generate saved, so
+// DeleteUnused keeps every secret the deployed service still needs.
+func TestReferencedSecretsMatchesTheSavedSecrets(t *testing.T) {
+	workload := score.Workload{
+		Metadata: score.WorkloadMetadata{"name": "hello-world"},
+		Containers: score.WorkloadContainers{"main": {
+			Image: "busybox:latest",
+			Variables: score.ContainerVariables{
+				"HOST":     "${resources.db.host}",
+				"PASSWORD": "${resources.db.password}",
+				"DSN":      "postgres://app:${resources.db.password}@${resources.db.host}",
+			},
+			Files: score.ContainerFiles{
+				"/etc/app/config.yaml": {Content: new("password: ${resources.db.password}")},
+			},
+		}},
+		Resources: score.WorkloadResources{"db": {Type: "postgres"}},
+	}
+	substitutions := score.Substitutions{
+		"resources.db.host":     {Value: "db.example.com"},
+		"resources.db.password": {Secret: &score.SecretRef{Type: score.SecretTypeDirect, Value: "s3cr3t"}},
+	}
+	saver := newFakeSecretSaver()
+	manifests, err := NewGenerator(saver).Generate(t.Context(), &workload, substitutions)
+	require.NoError(t, err)
+	wantSaved := slices.Sorted(maps.Keys(saver.saved))
+	require.Len(t, wantSaved, 3, "PASSWORD, DSN and the config file")
+
+	t.Run("json", func(t *testing.T) {
+		names, err := ReferencedSecrets(manifests[ServiceManifestKey])
+		require.NoError(t, err)
+		assert.Equal(t, wantSaved, names)
+	})
+
+	t.Run("yaml", func(t *testing.T) {
+		asYAML, err := yaml.JSONToYAML(manifests[ServiceManifestKey])
+		require.NoError(t, err)
+		names, err := ReferencedSecrets(asYAML)
+		require.NoError(t, err)
+		assert.Equal(t, wantSaved, names)
+	})
+}
+
+func TestReferencedSecretsWithoutSecrets(t *testing.T) {
+	names, err := ReferencedSecrets([]byte(`{"apiVersion":"serving.knative.dev/v1","kind":"Service","metadata":{"name":"hello-world"}}`))
+	require.NoError(t, err)
+	assert.Empty(t, names)
+}
+
+func TestReferencedSecretsRejectsAnInvalidManifest(t *testing.T) {
+	_, err := ReferencedSecrets([]byte("spec: ["))
+	require.ErrorContains(t, err, "parsing the service manifest")
 }
