@@ -20,14 +20,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/score-spec/score-go/types"
+	"github.com/score-spec/score-go/v2/score"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/intstr"
-
-	"github.com/humanitec/cloudrun-score-generator/score"
 )
 
 // fakeSecretSaver records what would be written to Secret Manager.
@@ -52,17 +50,17 @@ func (f *fakeSecretSaver) SaveSecret(_ context.Context, service, name, value str
 }
 
 func TestEnvVar(t *testing.T) {
-	substitutions := map[string]score.SubValue{
+	substitutions := score.Substitutions{
 		"resources.db.host":     {Value: "db.example.com"},
 		"resources.db.port":     {Value: 5432},
-		"resources.db.password": {Secret: &score.SecretRef{Type: score.DirectSecretType, Value: "s3cr3t"}},
+		"resources.db.password": {Secret: &score.SecretRef{Type: score.SecretTypeDirect, Value: "s3cr3t"}},
 		"resources.db.ref":      {Secret: &score.SecretRef{Type: "gsm", Ref: "projects/1/secrets/db/versions/3"}},
-		"resources.db.nil":      {Secret: &score.SecretRef{Type: score.DirectSecretType}},
+		"resources.db.nil":      {Secret: &score.SecretRef{Type: score.SecretTypeDirect}},
 	}
-	builderFor := func(variables types.ContainerVariables, secrets SecretSaver) *k8sBuilder {
-		return newK8sBuilder(types.Workload{
+	builderFor := func(variables score.ContainerVariables, secrets SecretSaver) *k8sBuilder {
+		return newK8sBuilder(score.Workload{
 			Metadata: map[string]any{"name": "hello-world"},
-			Containers: types.WorkloadContainers{
+			Containers: score.WorkloadContainers{
 				"main": {Image: "busybox:latest", Variables: variables},
 			},
 		}, substitutions, secrets, "hello-world")
@@ -76,7 +74,7 @@ func TestEnvVar(t *testing.T) {
 
 	t.Run("plain values are inlined and sorted", func(t *testing.T) {
 		saver := newFakeSecretSaver()
-		env, err := builderFor(types.ContainerVariables{
+		env, err := builderFor(score.ContainerVariables{
 			"PORT": "${resources.db.port}",
 			"HOST": "${resources.db.host}",
 			"ESC":  "$${resources.db.host}",
@@ -92,7 +90,7 @@ func TestEnvVar(t *testing.T) {
 
 	t.Run("a variable with a secret is stored whole in gsm", func(t *testing.T) {
 		saver := newFakeSecretSaver()
-		env, err := builderFor(types.ContainerVariables{
+		env, err := builderFor(score.ContainerVariables{
 			"HOST": "${resources.db.host}",
 			"URL":  "pg://${resources.db.password}@${resources.db.host}:${resources.db.port}",
 		}, saver).EnvVar(t.Context(), "main")
@@ -128,7 +126,7 @@ func TestEnvVar(t *testing.T) {
 			t.Run(testCase.name, func(t *testing.T) {
 				saver := newFakeSecretSaver()
 				saver.err = testCase.saveErr
-				_, err := builderFor(types.ContainerVariables{"V": testCase.value}, saver).EnvVar(t.Context(), "main")
+				_, err := builderFor(score.ContainerVariables{"V": testCase.value}, saver).EnvVar(t.Context(), "main")
 				require.ErrorContains(t, err, testCase.wantErrText)
 				if testCase.saveErr != nil {
 					assert.ErrorIs(t, err, testCase.saveErr)
@@ -139,16 +137,16 @@ func TestEnvVar(t *testing.T) {
 }
 
 func TestContainerFiles(t *testing.T) {
-	substitutions := map[string]score.SubValue{
+	substitutions := score.Substitutions{
 		"resources.db.host":     {Value: "db.example.com"},
-		"resources.db.password": {Secret: &score.SecretRef{Type: score.DirectSecretType, Value: "s3cr3t"}},
+		"resources.db.password": {Secret: &score.SecretRef{Type: score.SecretTypeDirect, Value: "s3cr3t"}},
 		"resources.db.ref":      {Secret: &score.SecretRef{Type: "gsm", Ref: "projects/1/secrets/db/versions/3"}},
-		"resources.db.nil":      {Secret: &score.SecretRef{Type: score.DirectSecretType}},
+		"resources.db.nil":      {Secret: &score.SecretRef{Type: score.SecretTypeDirect}},
 	}
-	builderFor := func(files types.ContainerFiles, secrets SecretSaver) *k8sBuilder {
-		return newK8sBuilder(types.Workload{
+	builderFor := func(files score.ContainerFiles, secrets SecretSaver) *k8sBuilder {
+		return newK8sBuilder(score.Workload{
 			Metadata: map[string]any{"name": "hello-world"},
-			Containers: types.WorkloadContainers{
+			Containers: score.WorkloadContainers{
 				"main": {Image: "busybox:latest", Files: files},
 			},
 		}, substitutions, secrets, "hello-world")
@@ -163,7 +161,7 @@ func TestContainerFiles(t *testing.T) {
 
 	t.Run("secret files are stored in gsm and mounted", func(t *testing.T) {
 		saver := newFakeSecretSaver()
-		mounts, volumes, err := builderFor(types.ContainerFiles{
+		mounts, volumes, err := builderFor(score.ContainerFiles{
 			"/etc/app/config.yaml": {Content: new("password: ${resources.db.password}\nhost: ${resources.db.host}"), Mode: new("0400")},
 			"/etc/other/raw":       {Content: new("${resources.db.password}")},
 		}, saver).ContainerFiles(t.Context())
@@ -203,23 +201,23 @@ func TestContainerFiles(t *testing.T) {
 		saveErr := errors.New("permission denied")
 		testCases := []struct {
 			name        string
-			files       types.ContainerFiles
+			files       score.ContainerFiles
 			saveErr     error
 			wantErrText string
 		}{
 			{
 				name:        "plain file",
-				files:       types.ContainerFiles{"/etc/app/f": {Content: new("host: ${resources.db.host}")}},
+				files:       score.ContainerFiles{"/etc/app/f": {Content: new("host: ${resources.db.host}")}},
 				wantErrText: "file /etc/app/f: cloudrun only supports mounting files from google secret manager secrets",
 			},
 			{
 				name:        "no expand keeps the file plain",
-				files:       types.ContainerFiles{"/etc/app/f": {Content: new("${resources.db.password}"), NoExpand: new(true)}},
+				files:       score.ContainerFiles{"/etc/app/f": {Content: new("${resources.db.password}"), NoExpand: new(true)}},
 				wantErrText: "cloudrun only supports mounting files from google secret manager secrets",
 			},
 			{
 				name: "two files in one directory",
-				files: types.ContainerFiles{
+				files: score.ContainerFiles{
 					"/etc/app/a": {Content: new("${resources.db.password}")},
 					"/etc/app/b": {Content: new("${resources.db.password}")},
 				},
@@ -227,27 +225,27 @@ func TestContainerFiles(t *testing.T) {
 			},
 			{
 				name:        "unsupported secret type",
-				files:       types.ContainerFiles{"/etc/app/f": {Content: new("${resources.db.ref}")}},
+				files:       score.ContainerFiles{"/etc/app/f": {Content: new("${resources.db.ref}")}},
 				wantErrText: `resolving placeholder ${resources.db.ref}: unsupported secret type "gsm"`,
 			},
 			{
 				name:        "nil secret",
-				files:       types.ContainerFiles{"/etc/app/f": {Content: new("${resources.db.nil}")}},
+				files:       score.ContainerFiles{"/etc/app/f": {Content: new("${resources.db.nil}")}},
 				wantErrText: "resolving placeholder ${resources.db.nil}: direct secret has no value",
 			},
 			{
 				name:        "relative path",
-				files:       types.ContainerFiles{"etc/app/f": {Content: new("${resources.db.password}")}},
+				files:       score.ContainerFiles{"etc/app/f": {Content: new("${resources.db.password}")}},
 				wantErrText: `processing containers.main.files: "etc/app" is not an absolute path`,
 			},
 			{
 				name:        "invalid mode",
-				files:       types.ContainerFiles{"/etc/app/f": {Content: new("${resources.db.password}"), Mode: new("9")}},
+				files:       score.ContainerFiles{"/etc/app/f": {Content: new("${resources.db.password}"), Mode: new("9")}},
 				wantErrText: "file mode for file /etc/app/f is invalid",
 			},
 			{
 				name:        "saving fails",
-				files:       types.ContainerFiles{"/etc/app/f": {Content: new("${resources.db.password}")}},
+				files:       score.ContainerFiles{"/etc/app/f": {Content: new("${resources.db.password}")}},
 				saveErr:     saveErr,
 				wantErrText: "file /etc/app/f: saving secret to google secret manager",
 			},
@@ -267,7 +265,7 @@ func TestContainerFiles(t *testing.T) {
 }
 
 func TestVolumes(t *testing.T) {
-	substitutions := map[string]score.SubValue{
+	substitutions := score.Substitutions{
 		"resources.vol-01": {Value: map[string]any{
 			"kubernetes":       map[string]any{"secret": map[string]any{"secretName": "one-secret"}},
 			"google-cloud-run": map[string]any{"secret": map[string]any{"secretName": "one-cloud-run-secret"}},
@@ -287,7 +285,7 @@ func TestVolumes(t *testing.T) {
 		}},
 		"resources.secret-volume": {Secret: &score.SecretRef{Store: "secret", Ref: "mysecret/myvolume"}},
 	}
-	resources := types.WorkloadResources{
+	resources := score.WorkloadResources{
 		"db":                     {Type: "postgres"},
 		"vol-01":                 {Type: "volume"},
 		"vol-02":                 {Type: "volume"},
@@ -298,8 +296,8 @@ func TestVolumes(t *testing.T) {
 		"not-a-volume-spec":      {Type: "volume"},
 		"secret-volume":          {Type: "volume"},
 	}
-	builderFor := func(containers types.WorkloadContainers) *k8sBuilder {
-		return newK8sBuilder(types.Workload{
+	builderFor := func(containers score.WorkloadContainers) *k8sBuilder {
+		return newK8sBuilder(score.Workload{
 			Metadata:   map[string]any{"name": "hello-world"},
 			Containers: containers,
 			Resources:  resources,
@@ -307,15 +305,15 @@ func TestVolumes(t *testing.T) {
 	}
 
 	t.Run("no volumes", func(t *testing.T) {
-		mounts, volumes, err := builderFor(types.WorkloadContainers{"main": {}}).Volumes()
+		mounts, volumes, err := builderFor(score.WorkloadContainers{"main": {}}).Volumes()
 		require.NoError(t, err)
 		assert.Empty(t, mounts)
 		assert.Empty(t, volumes)
 	})
 
 	t.Run("uses the google-cloud-run output", func(t *testing.T) {
-		mounts, volumes, err := builderFor(types.WorkloadContainers{
-			"main": {Volumes: types.ContainerVolumes{
+		mounts, volumes, err := builderFor(score.WorkloadContainers{
+			"main": {Volumes: score.ContainerVolumes{
 				"/hello/world": {Path: new("new"), Source: "${resources.vol-01}"},
 			}},
 		}).Volumes()
@@ -328,8 +326,8 @@ func TestVolumes(t *testing.T) {
 	})
 
 	t.Run("read only volume", func(t *testing.T) {
-		mounts, _, err := builderFor(types.WorkloadContainers{
-			"main": {Volumes: types.ContainerVolumes{
+		mounts, _, err := builderFor(score.WorkloadContainers{
+			"main": {Volumes: score.ContainerVolumes{
 				"/hello/world": {Source: "${resources.vol-01}", ReadOnly: new(true)},
 			}},
 		}).Volumes()
@@ -343,12 +341,12 @@ func TestVolumes(t *testing.T) {
 	})
 
 	t.Run("volumes are shared between containers", func(t *testing.T) {
-		mounts, volumes, err := builderFor(types.WorkloadContainers{
-			"main": {Volumes: types.ContainerVolumes{
+		mounts, volumes, err := builderFor(score.WorkloadContainers{
+			"main": {Volumes: score.ContainerVolumes{
 				"/one": {Source: "${resources.vol-01}"},
 				"/two": {Source: "${resources.vol-02}"},
 			}},
-			"other": {Volumes: types.ContainerVolumes{
+			"other": {Volumes: score.ContainerVolumes{
 				"/two": {Source: "${resources.vol-02}"},
 			}},
 		}).Volumes()
@@ -388,8 +386,8 @@ func TestVolumes(t *testing.T) {
 		}
 		for _, testCase := range testCases {
 			t.Run(testCase.name, func(t *testing.T) {
-				_, _, err := builderFor(types.WorkloadContainers{
-					"main": {Volumes: types.ContainerVolumes{
+				_, _, err := builderFor(score.WorkloadContainers{
+					"main": {Volumes: score.ContainerVolumes{
 						"/hello/world": {Path: new("new"), Source: testCase.source},
 					}},
 				}).Volumes()
@@ -400,8 +398,8 @@ func TestVolumes(t *testing.T) {
 }
 
 func TestExpandFile(t *testing.T) {
-	builder := newK8sBuilder(types.Workload{
-		Containers: map[string]types.Container{
+	builder := newK8sBuilder(score.Workload{
+		Containers: map[string]score.Container{
 			"one": {
 				Image: "image-one:latest",
 			},
@@ -409,29 +407,29 @@ func TestExpandFile(t *testing.T) {
 				Image: "image-two:latest",
 			},
 		},
-		Resources: types.WorkloadResources{
-			"db": types.Resource{
+		Resources: score.WorkloadResources{
+			"db": score.Resource{
 				Type: "postgres",
 			},
-			"cache": types.Resource{
+			"cache": score.Resource{
 				Type: "redis",
 			},
-			"shared-store": types.Resource{
+			"shared-store": score.Resource{
 				Type:  "bucket",
 				Class: new("rw"),
 				Id:    new("common"),
 			},
-			"missing": types.Resource{
+			"missing": score.Resource{
 				Type: "volume",
 			},
 		},
-	}, map[string]score.SubValue{
+	}, score.Substitutions{
 		"resources.db.name":     {Value: "db_name"},
 		"resources.db.port":     {Value: 5432},
 		"resources.db.host":     {Value: "db.example.com"},
 		"resources.db.username": {Value: "test_user"},
 		"resources.db.password": {Secret: &score.SecretRef{
-			Type:  score.DirectSecretType,
+			Type:  score.SecretTypeDirect,
 			Value: "s3cr3t",
 		}},
 		"resources.db.ref": {Secret: &score.SecretRef{
@@ -446,20 +444,20 @@ func TestExpandFile(t *testing.T) {
 		"resources.cache.host":     {Value: "cache.example.com"},
 		"resources.cache.username": {Value: "redis_user"},
 		"resources.cache.password": {Secret: &score.SecretRef{
-			Type:  score.DirectSecretType,
+			Type:  score.SecretTypeDirect,
 			Value: "r3di5-p455w0rd",
 		}},
 		"resources.cache.db_index": {Secret: &score.SecretRef{
-			Type:  score.DirectSecretType,
+			Type:  score.SecretTypeDirect,
 			Value: 7,
 		}},
 		"resources.cache.tls": {Secret: &score.SecretRef{
-			Type:  score.DirectSecretType,
+			Type:  score.SecretTypeDirect,
 			Value: map[string]any{"ca": "root-ca", "verify": true},
 		}},
 	}, nil, "")
 	t.Run("no placeholders", func(t *testing.T) {
-		file := types.ContainerFile{
+		file := score.ContainerFile{
 			Content: new("Hello World!"),
 		}
 		output, err := builder.ExpandFile(file, "one")
@@ -467,7 +465,7 @@ func TestExpandFile(t *testing.T) {
 		assert.Equal(t, &score.SubValue{Value: "Hello World!"}, output)
 	})
 	t.Run("placeholders no expand", func(t *testing.T) {
-		file := types.ContainerFile{
+		file := score.ContainerFile{
 			Content:  new("Should not expand ${resources.db.name}"),
 			NoExpand: new(true),
 		}
@@ -476,7 +474,7 @@ func TestExpandFile(t *testing.T) {
 		assert.Equal(t, &score.SubValue{Value: "Should not expand ${resources.db.name}"}, output)
 	})
 	t.Run("single placeholder expand", func(t *testing.T) {
-		file := types.ContainerFile{
+		file := score.ContainerFile{
 			Content: new("${resources.db.name}"),
 		}
 		output, err := builder.ExpandFile(file, "one")
@@ -484,14 +482,14 @@ func TestExpandFile(t *testing.T) {
 		assert.Equal(t, &score.SubValue{Value: "db_name"}, output)
 	})
 	t.Run("not a resource placeholder", func(t *testing.T) {
-		file := types.ContainerFile{
+		file := score.ContainerFile{
 			Content: new("${container.image}"),
 		}
 		_, err := builder.ExpandFile(file, "one")
 		require.ErrorContains(t, err, `must start with "resources"`)
 	})
 	t.Run("multiple placeholder expand", func(t *testing.T) {
-		file := types.ContainerFile{
+		file := score.ContainerFile{
 			Content: new("${resources.db.name} ${resources.shared-store.name}"),
 		}
 		output, err := builder.ExpandFile(file, "one")
@@ -499,59 +497,59 @@ func TestExpandFile(t *testing.T) {
 		assert.Equal(t, &score.SubValue{Value: "db_name shared bucket"}, output)
 	})
 	t.Run("single placeholder secret", func(t *testing.T) {
-		file := types.ContainerFile{
+		file := score.ContainerFile{
 			Content: new("${resources.db.password}"),
 		}
 		output, err := builder.ExpandFile(file, "one")
 		require.NoError(t, err)
 		assert.Equal(t, &score.SubValue{Secret: &score.SecretRef{
-			Type:  score.DirectSecretType,
+			Type:  score.SecretTypeDirect,
 			Value: "s3cr3t",
 		}}, output)
 	})
 	t.Run("unsupported secret type", func(t *testing.T) {
-		file := types.ContainerFile{
+		file := score.ContainerFile{
 			Content: new("${resources.db.ref}"),
 		}
 		_, err := builder.ExpandFile(file, "one")
 		require.ErrorContains(t, err, `unsupported secret type "gsm"`)
 	})
 	t.Run("multiple placeholder expand secrets", func(t *testing.T) {
-		file := types.ContainerFile{
+		file := score.ContainerFile{
 			Content: new("redis://${resources.cache.username}:${resources.cache.password}@${resources.cache.host}:${resources.cache.port}/${resources.cache.name}"),
 		}
 		output, err := builder.ExpandFile(file, "one")
 		require.NoError(t, err)
 		assert.Equal(t, &score.SubValue{Secret: &score.SecretRef{
-			Type:  score.DirectSecretType,
+			Type:  score.SecretTypeDirect,
 			Value: "redis://redis_user:r3di5-p455w0rd@cache.example.com:6379/redis",
 		}}, output)
 	})
 	t.Run("secret with number value", func(t *testing.T) {
-		file := types.ContainerFile{
+		file := score.ContainerFile{
 			Content: new("redis://${resources.cache.host}:${resources.cache.port}/${resources.cache.db_index}"),
 		}
 		output, err := builder.ExpandFile(file, "one")
 		require.NoError(t, err)
 		assert.Equal(t, &score.SubValue{Secret: &score.SecretRef{
-			Type:  score.DirectSecretType,
+			Type:  score.SecretTypeDirect,
 			Value: "redis://cache.example.com:6379/7",
 		}}, output)
 	})
 	t.Run("secret with object value", func(t *testing.T) {
-		file := types.ContainerFile{
+		file := score.ContainerFile{
 			Content: new("tls = ${resources.cache.tls}"),
 		}
 		output, err := builder.ExpandFile(file, "one")
 		require.NoError(t, err)
 		assert.Equal(t, &score.SubValue{Secret: &score.SecretRef{
-			Type:  score.DirectSecretType,
+			Type:  score.SecretTypeDirect,
 			Value: `tls = {"ca":"root-ca","verify":true}`,
 		}}, output)
 	})
 
 	t.Run("unsupported secret type among other placeholders", func(t *testing.T) {
-		file := types.ContainerFile{
+		file := score.ContainerFile{
 			Content: new("postgresql://${resources.db.username}:${resources.db.ref}@${resources.db.host}"),
 		}
 		_, err := builder.ExpandFile(file, "one")
@@ -609,27 +607,27 @@ func TestVolumeNamePartsAreTheRequestedLength(t *testing.T) {
 }
 
 func TestPod(t *testing.T) {
-	substitutions := map[string]score.SubValue{
+	substitutions := score.Substitutions{
 		"resources.db.name":     {Value: "db_name"},
 		"resources.db.port":     {Value: 5432},
 		"resources.db.host":     {Value: "db.example.com"},
 		"resources.db.username": {Value: "test_user"},
-		"resources.db.password": {Secret: &score.SecretRef{Type: score.DirectSecretType, Value: "s3cr3t"}},
+		"resources.db.password": {Secret: &score.SecretRef{Type: score.SecretTypeDirect, Value: "s3cr3t"}},
 		"resources.vol-01": {Value: map[string]any{
 			"google-cloud-run": map[string]any{"secret": map[string]any{"secretName": "one-cloud-run-secret"}},
 		}},
 		"resources.readonly-store.name": {Value: "read-only bucket"},
 	}
-	resources := types.WorkloadResources{
+	resources := score.WorkloadResources{
 		"db":             {Type: "postgres"},
 		"vol-01":         {Type: "volume"},
 		"readonly-store": {Type: "bucket"},
 	}
 
 	t.Run("just image", func(t *testing.T) {
-		pod, err := newK8sBuilder(types.Workload{
+		pod, err := newK8sBuilder(score.Workload{
 			Metadata:   map[string]any{"name": "hello-world"},
-			Containers: types.WorkloadContainers{"main": {Image: "busybox:latest"}},
+			Containers: score.WorkloadContainers{"main": {Image: "busybox:latest"}},
 		}, substitutions, newFakeSecretSaver(), "hello-world").Pod(t.Context())
 		require.NoError(t, err)
 		assert.Equal(t, corev1.PodSpec{
@@ -639,45 +637,45 @@ func TestPod(t *testing.T) {
 
 	t.Run("full pod multi container", func(t *testing.T) {
 		saver := newFakeSecretSaver()
-		pod, err := newK8sBuilder(types.Workload{
+		pod, err := newK8sBuilder(score.Workload{
 			Metadata: map[string]any{"name": "hello-world"},
-			Containers: types.WorkloadContainers{
+			Containers: score.WorkloadContainers{
 				"main": {
 					Image: "busybox:latest",
-					ReadinessProbe: &types.ContainerProbe{HttpGet: &types.HttpProbe{
-						HttpHeaders: []types.HttpProbeHttpHeadersElem{{Name: "X-Test-Header", Value: "test test"}},
+					ReadinessProbe: &score.ContainerProbe{HttpGet: &score.HttpProbe{
+						HttpHeaders: []score.HttpProbeHttpHeadersElem{{Name: "X-Test-Header", Value: "test test"}},
 						Path:        "/ready",
 						Port:        8765,
-						Scheme:      (*types.HttpProbeScheme)(new("http")),
+						Scheme:      (*score.HttpProbeScheme)(new("http")),
 					}},
-					Resources: &types.ContainerResources{
-						Limits: &types.ResourcesLimits{Cpu: new("500m"), Memory: new("128Mi")},
+					Resources: &score.ContainerResources{
+						Limits: &score.ResourcesLimits{Cpu: new("500m"), Memory: new("128Mi")},
 					},
-					Variables: types.ContainerVariables{
+					Variables: score.ContainerVariables{
 						"DBCONN":      "postgresql://${resources.db.username}:${resources.db.password}@${resources.db.host}:${resources.db.port}/${resources.db.name}",
 						"BUCKET_NAME": "${resources.readonly-store.name}",
 						"ESCAPED":     "$${resources.db.password}",
 					},
-					Volumes: types.ContainerVolumes{
+					Volumes: score.ContainerVolumes{
 						"/hello/world": {Path: new("new"), Source: "${resources.vol-01}"},
 					},
 				},
 				"sidecar": {
 					Image: "nginx:latest",
-					LivenessProbe: &types.ContainerProbe{HttpGet: &types.HttpProbe{
+					LivenessProbe: &score.ContainerProbe{HttpGet: &score.HttpProbe{
 						Host:   new("example"),
 						Path:   "/healthz",
 						Port:   3456,
-						Scheme: (*types.HttpProbeScheme)(new("http")),
+						Scheme: (*score.HttpProbeScheme)(new("http")),
 					}},
-					ReadinessProbe: &types.ContainerProbe{Exec: &types.ExecProbe{Command: []string{"/bin/sh", "-c", "true"}}},
-					Resources: &types.ContainerResources{
-						Requests: &types.ResourcesLimits{Cpu: new("1240m"), Memory: new("64Mi")},
+					ReadinessProbe: &score.ContainerProbe{Exec: &score.ExecProbe{Command: []string{"/bin/sh", "-c", "true"}}},
+					Resources: &score.ContainerResources{
+						Requests: &score.ResourcesLimits{Cpu: new("1240m"), Memory: new("64Mi")},
 					},
-					Files: types.ContainerFiles{
+					Files: score.ContainerFiles{
 						"/base/one/alpha.txt": {Content: new("${resources.db.password}")},
 					},
-					Volumes: types.ContainerVolumes{
+					Volumes: score.ContainerVolumes{
 						"/some/dir": {Source: "${resources.vol-01}"},
 					},
 				},
@@ -758,11 +756,11 @@ func TestPod(t *testing.T) {
 	t.Run("mounts of one volume have a stable order", func(t *testing.T) {
 		// Map iteration is random, so a single run could pass by luck.
 		for range 50 {
-			pod, err := newK8sBuilder(types.Workload{
+			pod, err := newK8sBuilder(score.Workload{
 				Metadata: map[string]any{"name": "hello-world"},
-				Containers: types.WorkloadContainers{"main": {
+				Containers: score.WorkloadContainers{"main": {
 					Image: "busybox:latest",
-					Volumes: types.ContainerVolumes{
+					Volumes: score.ContainerVolumes{
 						"/data2": {Source: "${resources.vol-01}"},
 						"/data1": {Source: "${resources.vol-01}"},
 						"/data3": {Source: "${resources.vol-01}"},
@@ -782,18 +780,18 @@ func TestPod(t *testing.T) {
 	t.Run("errors", func(t *testing.T) {
 		testCases := []struct {
 			name        string
-			container   types.Container
+			container   score.Container
 			wantErrText string
 		}{
-			{name: "invalid cpu request", container: types.Container{Image: "i", Resources: &types.ContainerResources{Requests: &types.ResourcesLimits{Cpu: new("lots")}}}, wantErrText: "containers.main: converting resources.requests.cpu"},
-			{name: "invalid cpu limit", container: types.Container{Image: "i", Resources: &types.ContainerResources{Limits: &types.ResourcesLimits{Cpu: new("lots")}}}, wantErrText: "containers.main: converting resources.limits.cpu"},
-			{name: "unsupported probe", container: types.Container{Image: "i", LivenessProbe: &types.ContainerProbe{}}, wantErrText: `containers.main.livenessProbe: only "httpGet" and "exec" probes supported`},
+			{name: "invalid cpu request", container: score.Container{Image: "i", Resources: &score.ContainerResources{Requests: &score.ResourcesLimits{Cpu: new("lots")}}}, wantErrText: "containers.main: converting resources.requests.cpu"},
+			{name: "invalid cpu limit", container: score.Container{Image: "i", Resources: &score.ContainerResources{Limits: &score.ResourcesLimits{Cpu: new("lots")}}}, wantErrText: "containers.main: converting resources.limits.cpu"},
+			{name: "unsupported probe", container: score.Container{Image: "i", LivenessProbe: &score.ContainerProbe{}}, wantErrText: `containers.main.livenessProbe: only "httpGet" and "exec" probes supported`},
 		}
 		for _, testCase := range testCases {
 			t.Run(testCase.name, func(t *testing.T) {
-				_, err := newK8sBuilder(types.Workload{
+				_, err := newK8sBuilder(score.Workload{
 					Metadata:   map[string]any{"name": "hello-world"},
-					Containers: types.WorkloadContainers{"main": testCase.container},
+					Containers: score.WorkloadContainers{"main": testCase.container},
 				}, substitutions, newFakeSecretSaver(), "hello-world").Pod(t.Context())
 				require.ErrorContains(t, err, testCase.wantErrText)
 			})

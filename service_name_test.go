@@ -17,21 +17,21 @@ package cloudrun
 import (
 	"testing"
 
-	"github.com/score-spec/score-go/types"
+	"github.com/score-spec/score-go/v2/score"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestServiceName(t *testing.T) {
 	testCases := []struct {
 		name     string
-		metadata types.WorkloadMetadata
+		metadata score.WorkloadMetadata
 		want     string
 	}{
 		{name: "no metadata", want: ""},
-		{name: "metadata.name", metadata: types.WorkloadMetadata{"name": "hello-world"}, want: "hello-world"},
+		{name: "metadata.name", metadata: score.WorkloadMetadata{"name": "hello-world"}, want: "hello-world"},
 		{
 			name: "annotation wins",
-			metadata: types.WorkloadMetadata{
+			metadata: score.WorkloadMetadata{
 				"name":        "hello-world",
 				"annotations": map[string]any{ServiceNameAnnotation: "hello-world-dev"},
 			},
@@ -39,7 +39,7 @@ func TestServiceName(t *testing.T) {
 		},
 		{
 			name: "empty annotation falls back",
-			metadata: types.WorkloadMetadata{
+			metadata: score.WorkloadMetadata{
 				"name":        "hello-world",
 				"annotations": map[string]any{ServiceNameAnnotation: ""},
 			},
@@ -48,14 +48,14 @@ func TestServiceName(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			assert.Equal(t, testCase.want, ServiceName(&types.Workload{Metadata: testCase.metadata}))
+			assert.Equal(t, testCase.want, ServiceName(&score.Workload{Metadata: testCase.metadata}))
 		})
 	}
 }
 
 func TestWithServiceName(t *testing.T) {
 	t.Run("leaves the original untouched", func(t *testing.T) {
-		original := types.Workload{Metadata: types.WorkloadMetadata{
+		original := score.Workload{Metadata: score.WorkloadMetadata{
 			"name":        "hello-world",
 			"annotations": map[string]any{"team": "platform"},
 		}}
@@ -65,14 +65,14 @@ func TestWithServiceName(t *testing.T) {
 		assert.Equal(t, "hello-world-dev", ServiceName(&named))
 		assert.Equal(t, "hello-world", named.Metadata["name"], "metadata.name is kept")
 		assert.Equal(t, "platform", named.Metadata["annotations"].(map[string]any)["team"], "other annotations are kept")
-		assert.Equal(t, types.WorkloadMetadata{
+		assert.Equal(t, score.WorkloadMetadata{
 			"name":        "hello-world",
 			"annotations": map[string]any{"team": "platform"},
 		}, original.Metadata)
 	})
 
 	t.Run("no metadata", func(t *testing.T) {
-		named := WithServiceName(types.Workload{}, "hello-world-dev")
+		named := WithServiceName(score.Workload{}, "hello-world-dev")
 		assert.Equal(t, "hello-world-dev", ServiceName(&named))
 	})
 }

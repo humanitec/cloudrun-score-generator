@@ -18,12 +18,12 @@ import (
 	"cmp"
 	"maps"
 
-	"github.com/score-spec/score-go/types"
+	"github.com/score-spec/score-go/v2/score"
 )
 
 // ServiceName returns the Cloud Run service name for the workload:
 // the ServiceNameAnnotation if set, metadata.name otherwise.
-func ServiceName(spec *types.Workload) string {
+func ServiceName(spec *score.Workload) string {
 	annotations, _ := spec.Metadata["annotations"].(map[string]any)
 	name, _ := annotations[ServiceNameAnnotation].(string)
 	workloadName, _ := spec.Metadata["name"].(string)
@@ -31,10 +31,10 @@ func ServiceName(spec *types.Workload) string {
 }
 
 // WithServiceName returns a copy of the workload with the ServiceNameAnnotation set to name.
-func WithServiceName(spec types.Workload, name string) types.Workload {
+func WithServiceName(spec score.Workload, name string) score.Workload {
 	metadata := maps.Clone(spec.Metadata)
 	if metadata == nil {
-		metadata = types.WorkloadMetadata{}
+		metadata = score.WorkloadMetadata{}
 	}
 	annotations, _ := metadata["annotations"].(map[string]any)
 	annotations = maps.Clone(annotations)

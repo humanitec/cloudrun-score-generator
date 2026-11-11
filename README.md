@@ -7,10 +7,9 @@ A Go library that turns a [Score](https://score.dev) workload into a
 Secret values are never written into the manifest. They are stored in Google Secret Manager,
 and the manifest references them.
 
-> **Status:** pre-1.0. The `score` package is a temporary copy of the interfaces proposed in
-> [score-spec/score-go#239](https://github.com/score-spec/score-go/pull/239). It will be
-> replaced by `github.com/score-spec/score-go/v2/score` once that is released, which is a
-> breaking change.
+`cloudrun.Generator` implements the `score.Generator` interface from
+[`github.com/score-spec/score-go/v2/score`](https://github.com/score-spec/score-go/tree/v2), so it
+can be combined with any `score.Normalizer` and `score.Provisioner`.
 
 ## Installation
 
@@ -24,10 +23,8 @@ go get github.com/humanitec/cloudrun-score-generator@latest
 |---|---|---|
 | `github.com/humanitec/cloudrun-score-generator` | `cloudrun` | `Generator`, which implements `score.Generator` for Cloud Run |
 | `github.com/humanitec/cloudrun-score-generator/secretmanager` | `secretmanager` | `Client`, a `cloudrun.SecretSaver` backed by Google Secret Manager |
-| `github.com/humanitec/cloudrun-score-generator/score` | `score` | The `Generator` interface and the substitution types (temporary) |
 
-The root package is named `cloudrun`, not after the module path, so you refer to it as
-`cloudrun.Generator`.
+The root package is named `cloudrun`, not after the module path, so you refer to it as `cloudrun.Generator`.
 
 ## Usage
 
@@ -63,12 +60,10 @@ import (
 	"log"
 	"os"
 
-	"github.com/score-spec/score-go/loader"
-	"github.com/score-spec/score-go/types"
-	"gopkg.in/yaml.v3"
+	"github.com/score-spec/score-go/v2/score"
+	"sigs.k8s.io/yaml"
 
 	cloudrun "github.com/humanitec/cloudrun-score-generator"
-	"github.com/humanitec/cloudrun-score-generator/score"
 	"github.com/humanitec/cloudrun-score-generator/secretmanager"
 )
 
@@ -79,25 +74,21 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	var raw map[string]any
-	if err := yaml.Unmarshal(src, &raw); err != nil {
-		log.Fatal(err)
-	}
-	var workload types.Workload
-	if err := loader.MapSpec(&workload, raw); err != nil {
+	var workload score.Workload
+	if err := yaml.Unmarshal(src, &workload); err != nil {
 		log.Fatal(err)
 	}
 
-	// Substitutions normally come from your provisioner: one entry per ${resources.*} placeholder.
-	substitutions := map[string]score.SubValue{
+	// Substitutions normally come from your score.Provisioner: one entry per ${resources.*} placeholder.
+	substitutions := score.Substitutions{
 		"resources.db.host":     {Value: "10.0.0.5"},
-		"resources.db.password": {Secret: &score.SecretRef{Type: score.DirectSecretType, Value: "s3cr3t"}},
+		"resources.db.password": {Secret: &score.SecretRef{Type: score.SecretTypeDirect, Value: "s3cr3t"}},
 	}
 
 	secrets := secretmanager.New("my-gcp-project", "europe-west1")
 	defer secrets.Close()
 
-	gen := cloudrun.NewGenerator(secrets)
+	var gen score.Generator = cloudrun.NewGenerator(secrets)
 	manifests, err := gen.Generate(ctx, &workload, substitutions)
 	if err != nil {
 		log.Fatal(err)
@@ -112,14 +103,14 @@ Secret Manager and referenced from the manifest through `secretKeyRef`.
 
 ### Substitutions
 
-Each key in the substitution map is a placeholder expression without the surrounding `${}`, for
+Each key in `score.Substitutions` is a placeholder expression without the surrounding `${}`, for
 example `resources.db.host`. Only `resources.*` placeholders are resolved. Replace any other
 placeholders, such as `${metadata.name}`, before calling `Generate` (it should be a part of Normalization).
 
 A `score.SubValue` holds either:
 
 - `Value`: a plain value. Values that aren't strings are encoded as JSON.
-- `Secret`: a secret. Only `score.DirectSecretType` is supported for now, with the secret value in
+- `Secret`: a secret. Only `score.SecretTypeDirect` is supported for now, with the secret value in
   `SecretRef.Value`.
 
 A variable that uses at least one secret placeholder is stored in Secret Manager as a whole and

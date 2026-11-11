@@ -18,27 +18,25 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/score-spec/score-go/types"
+	"github.com/score-spec/score-go/v2/score"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	servingv1 "knative.dev/serving/pkg/apis/serving/v1"
-
-	"github.com/humanitec/cloudrun-score-generator/score"
 )
 
 // A generator is not bound to one service: each workload names its own service and secrets.
 func TestGenerateMultipleWorkloads(t *testing.T) {
-	substitutions := map[string]score.SubValue{
-		"resources.db.password": {Secret: &score.SecretRef{Type: score.DirectSecretType, Value: "s3cr3t"}},
+	substitutions := score.Substitutions{
+		"resources.db.password": {Secret: &score.SecretRef{Type: score.SecretTypeDirect, Value: "s3cr3t"}},
 	}
-	workloadFor := func(name string) types.Workload {
-		return types.Workload{
-			Metadata: types.WorkloadMetadata{"name": name},
-			Containers: types.WorkloadContainers{"main": {
+	workloadFor := func(name string) score.Workload {
+		return score.Workload{
+			Metadata: score.WorkloadMetadata{"name": name},
+			Containers: score.WorkloadContainers{"main": {
 				Image:     "busybox:latest",
-				Variables: types.ContainerVariables{"WORKLOAD": name, "PASSWORD": "${resources.db.password}"},
+				Variables: score.ContainerVariables{"WORKLOAD": name, "PASSWORD": "${resources.db.password}"},
 			}},
-			Resources: types.WorkloadResources{"db": {Type: "postgres"}},
+			Resources: score.WorkloadResources{"db": {Type: "postgres"}},
 		}
 	}
 	saver := newFakeSecretSaver()
@@ -67,9 +65,9 @@ func TestGenerateMultipleWorkloads(t *testing.T) {
 
 // A service block without containers has no container to put the port on.
 func TestGenerateNoContainers(t *testing.T) {
-	workload := types.Workload{
-		Metadata: types.WorkloadMetadata{"name": "hello-world"},
-		Service:  &types.WorkloadService{},
+	workload := score.Workload{
+		Metadata: score.WorkloadMetadata{"name": "hello-world"},
+		Service:  &score.WorkloadService{},
 	}
 
 	manifests, err := NewGenerator(newFakeSecretSaver()).Generate(t.Context(), &workload, nil)
@@ -80,15 +78,15 @@ func TestGenerateNoContainers(t *testing.T) {
 
 // Without a name, secrets would be saved under "" before Cloud Run rejects the service.
 func TestGenerateNoServiceName(t *testing.T) {
-	workload := types.Workload{
-		Containers: types.WorkloadContainers{"main": {
+	workload := score.Workload{
+		Containers: score.WorkloadContainers{"main": {
 			Image:     "busybox:latest",
-			Variables: types.ContainerVariables{"PASSWORD": "${resources.db.password}"},
+			Variables: score.ContainerVariables{"PASSWORD": "${resources.db.password}"},
 		}},
-		Resources: types.WorkloadResources{"db": {Type: "postgres"}},
+		Resources: score.WorkloadResources{"db": {Type: "postgres"}},
 	}
-	substitutions := map[string]score.SubValue{
-		"resources.db.password": {Secret: &score.SecretRef{Type: score.DirectSecretType, Value: "s3cr3t"}},
+	substitutions := score.Substitutions{
+		"resources.db.password": {Secret: &score.SecretRef{Type: score.SecretTypeDirect, Value: "s3cr3t"}},
 	}
 	saver := newFakeSecretSaver()
 
