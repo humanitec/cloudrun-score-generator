@@ -178,8 +178,13 @@ func TestErrors(t *testing.T) {
 		},
 		{
 			name:    "manifest without a name",
-			args:    []string{"delete-unused-secrets", "--project", "p", "--manifest", writeFile(t, "service.yaml", "kind: Service\n")},
+			args:    []string{"delete-unused-secrets", "--project", "p", "--manifest", writeFile(t, "service.yaml", "apiVersion: serving.knative.dev/v1\nkind: Service\n")},
 			wantErr: "the manifest has no metadata.name",
+		},
+		{
+			name:    "score file instead of a manifest",
+			args:    []string{"delete-unused-secrets", "--project", "p", "--manifest", writeFile(t, "score.yaml", workloadYAML)},
+			wantErr: "score.yaml: not a Cloud Run service manifest",
 		},
 	}
 	for _, tc := range testCases {
