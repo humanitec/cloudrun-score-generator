@@ -419,7 +419,7 @@ func secretValue(secret *score.SecretRef) (string, error) {
 		}
 		return decodeToString(secret.Value)
 	default:
-		// For now, we don't support secret references. Secrets are resolved in Operator and passed to the driver as a flat value.
+		// For now, we don't support secret references. Secrets are passed in the substitution map as flat values.
 		// In the future we may need to support secret references, that reference Google Secret Manager secrets.
 		return "", fmt.Errorf("unsupported secret type %q", secret.Type)
 	}
