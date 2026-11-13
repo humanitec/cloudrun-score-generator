@@ -51,10 +51,16 @@ func secretID(workloadName, containerName, kind, key string) string {
 
 // ReferencedSecrets returns the sorted, unique names of the Secret Manager secrets that a
 // Cloud Run service manifest references in environment variables and secret volumes.
+//
+// It returns an error for anything but a serving.knative.dev/v1 Service.
 func ReferencedSecrets(manifest []byte) ([]string, error) {
 	var service servingv1.Service
 	if err := yaml.Unmarshal(manifest, &service); err != nil {
 		return nil, fmt.Errorf("parsing the service manifest: %w", err)
+	}
+	if apiVersion := servingv1.SchemeGroupVersion.String(); service.APIVersion != apiVersion || service.Kind != "Service" {
+		return nil, fmt.Errorf("not a Cloud Run service manifest: want apiVersion %s and kind Service, got %q and %q",
+			apiVersion, service.APIVersion, service.Kind)
 	}
 
 	spec := service.Spec.Template.Spec

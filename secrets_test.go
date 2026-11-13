@@ -154,6 +154,30 @@ func TestReferencedSecretsWithoutSecrets(t *testing.T) {
 }
 
 func TestReferencedSecretsRejectsAnInvalidManifest(t *testing.T) {
-	_, err := ReferencedSecrets([]byte("spec: ["))
-	require.ErrorContains(t, err, "parsing the service manifest")
+	testCases := []struct {
+		name, manifest, wantErr string
+	}{
+		{name: "invalid yaml", manifest: "spec: [", wantErr: "parsing the service manifest"},
+		{
+			name:     "score file",
+			manifest: "apiVersion: score.dev/v1b1\nmetadata: {name: hello-world}\ncontainers: {main: {image: busybox}}\n",
+			wantErr:  `not a Cloud Run service manifest: want apiVersion serving.knative.dev/v1 and kind Service, got "score.dev/v1b1" and ""`,
+		},
+		{
+			name:     "another kind",
+			manifest: "apiVersion: serving.knative.dev/v1\nkind: Revision\nmetadata: {name: hello-world}\n",
+			wantErr:  "not a Cloud Run service manifest",
+		},
+		{
+			name:     "another api version",
+			manifest: `{"apiVersion":"v1","kind":"Service","metadata":{"name":"hello-world"}}`,
+			wantErr:  "not a Cloud Run service manifest",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ReferencedSecrets([]byte(tc.manifest))
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
 }
