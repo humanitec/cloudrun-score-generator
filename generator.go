@@ -19,10 +19,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/score-spec/score-go/v2/score"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 	servingv1 "knative.dev/serving/pkg/apis/serving/v1"
 )
 
@@ -70,6 +72,11 @@ func (p *Generator) Generate(ctx context.Context, spec *score.Workload, substitu
 	serviceName := ServiceName(spec)
 	if serviceName == "" {
 		return nil, fmt.Errorf("a Cloud Run service needs a name: set metadata.name or the %s annotation", ServiceNameAnnotation)
+	}
+	// Cloud Run accepts DNS-1035 labels as service names. These are also valid Secret Manager label values
+	// (secrets are labeled with a service name).
+	if errs := validation.IsDNS1035Label(serviceName); len(errs) > 0 {
+		return nil, fmt.Errorf("invalid Cloud Run service name %q: %s", serviceName, strings.Join(errs, "; "))
 	}
 
 	builder := newK8sBuilder(*spec, substitutions, p.secrets, serviceName)

@@ -16,6 +16,7 @@ package cloudrun
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/score-spec/score-go/v2/score"
@@ -95,6 +96,49 @@ func TestGenerateNoServiceName(t *testing.T) {
 	require.ErrorContains(t, err, "needs a name")
 	assert.Nil(t, manifests)
 	assert.Empty(t, saver.services, "no secret is saved")
+}
+
+// An invalid name is rejected before manifest is generated or any secret is saved, as the name also labels the secrets.
+func TestGenerateServiceName(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		valid bool
+	}{
+		{name: "a", valid: true},
+		{name: "hello-world-2", valid: true},
+		{name: "a" + strings.Repeat("b", 62), valid: true},
+		{name: "a" + strings.Repeat("b", 63)},
+		{name: "Hello"},
+		{name: "1hello"},
+		{name: "-hello"},
+		{name: "hello-"},
+		{name: "hello_world"},
+		{name: "hello.world"},
+		{name: "héllo"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workload := WithServiceName(score.Workload{
+				Containers: score.WorkloadContainers{"main": {
+					Image:     "busybox:latest",
+					Variables: score.ContainerVariables{"PASSWORD": "${resources.db.password}"},
+				}},
+				Resources: score.WorkloadResources{"db": {Type: "postgres"}},
+			}, tc.name)
+			substitutions := score.Substitutions{
+				"resources.db.password": {Secret: &score.SecretRef{Type: score.SecretTypeDirect, Value: "s3cr3t"}},
+			}
+			saver := newFakeSecretSaver()
+
+			_, err := NewGenerator(saver).Generate(t.Context(), &workload, substitutions)
+
+			if tc.valid {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, "invalid Cloud Run service name")
+			assert.Empty(t, saver.services, "no secret is saved")
+		})
+	}
 }
 
 func TestGenerateNilWorkload(t *testing.T) {
