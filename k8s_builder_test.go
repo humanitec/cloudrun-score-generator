@@ -340,6 +340,16 @@ func TestVolumes(t *testing.T) {
 		assert.Equal(t, corev1.RecursiveReadOnlyIfPossible, *mount.RecursiveReadOnly)
 	})
 
+	t.Run("read only false volume", func(t *testing.T) {
+		mounts, _, err := builderFor(score.WorkloadContainers{
+			"main": {Volumes: score.ContainerVolumes{
+				"/hello/world": {Source: "${resources.vol-01}", ReadOnly: new(false)},
+			}},
+		}).Volumes()
+		require.NoError(t, err)
+		assert.Equal(t, []corev1.VolumeMount{{Name: "resources-vol-01", MountPath: "/hello/world"}}, mounts["main"])
+	})
+
 	t.Run("volumes are shared between containers", func(t *testing.T) {
 		mounts, volumes, err := builderFor(score.WorkloadContainers{
 			"main": {Volumes: score.ContainerVolumes{

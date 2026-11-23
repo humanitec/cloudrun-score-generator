@@ -176,8 +176,9 @@ func (b *k8sBuilder) Volumes() (map[string][]corev1.VolumeMount, []corev1.Volume
 
 			readOnly := false
 			var recursiveReadOnlyMode *corev1.RecursiveReadOnlyMode
-			if volume.ReadOnly != nil {
-				readOnly = *volume.ReadOnly
+			// Kubernetes only allows recursiveReadOnly (other than Disabled) when readOnly is true.
+			if volume.ReadOnly != nil && *volume.ReadOnly {
+				readOnly = true
 				r := corev1.RecursiveReadOnlyIfPossible
 				recursiveReadOnlyMode = &r
 			}
