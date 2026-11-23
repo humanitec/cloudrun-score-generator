@@ -149,7 +149,7 @@ func (b *k8sBuilder) Volumes() (map[string][]corev1.VolumeMount, []corev1.Volume
 				return nil, nil, fmt.Errorf("resolving volume containers.%s.volumes.%s: placeholder ${%s} cannot be resolved: no resource with name %s", containerName, mountPath, placeholders[0], parts[1])
 			}
 
-			volName := strings.ReplaceAll(placeholders[0], ".", "-")
+			volName := parts[1]
 
 			if _, exists := volumes[volName]; !exists {
 				output, err := b.substitutions.Resolve(placeholders[0])
