@@ -319,10 +319,10 @@ func TestVolumes(t *testing.T) {
 		}).Volumes()
 		require.NoError(t, err)
 		assert.Equal(t, []corev1.Volume{{
-			Name:         "resources-vol-01",
+			Name:         "vol-01",
 			VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "one-cloud-run-secret"}},
 		}}, volumes)
-		assert.Equal(t, []corev1.VolumeMount{{Name: "resources-vol-01", MountPath: "/hello/world", SubPath: "new"}}, mounts["main"])
+		assert.Equal(t, []corev1.VolumeMount{{Name: "vol-01", MountPath: "/hello/world", SubPath: "new"}}, mounts["main"])
 	})
 
 	t.Run("read only volume", func(t *testing.T) {
@@ -347,7 +347,7 @@ func TestVolumes(t *testing.T) {
 			}},
 		}).Volumes()
 		require.NoError(t, err)
-		assert.Equal(t, []corev1.VolumeMount{{Name: "resources-vol-01", MountPath: "/hello/world"}}, mounts["main"])
+		assert.Equal(t, []corev1.VolumeMount{{Name: "vol-01", MountPath: "/hello/world"}}, mounts["main"])
 	})
 
 	t.Run("volumes are shared between containers", func(t *testing.T) {
@@ -362,15 +362,15 @@ func TestVolumes(t *testing.T) {
 		}).Volumes()
 		require.NoError(t, err)
 		assert.ElementsMatch(t, []corev1.VolumeMount{
-			{Name: "resources-vol-01", MountPath: "/one"},
-			{Name: "resources-vol-02", MountPath: "/two"},
+			{Name: "vol-01", MountPath: "/one"},
+			{Name: "vol-02", MountPath: "/two"},
 		}, mounts["main"])
 		assert.ElementsMatch(t, []corev1.VolumeMount{
-			{Name: "resources-vol-02", MountPath: "/two"},
+			{Name: "vol-02", MountPath: "/two"},
 		}, mounts["other"])
 		assert.ElementsMatch(t, []corev1.Volume{
-			{Name: "resources-vol-01", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "one-cloud-run-secret"}}},
-			{Name: "resources-vol-02", VolumeSource: corev1.VolumeSource{CSI: &corev1.CSIVolumeSource{Driver: "gcsfuse.run.googleapis.com"}}},
+			{Name: "vol-01", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "one-cloud-run-secret"}}},
+			{Name: "vol-02", VolumeSource: corev1.VolumeSource{CSI: &corev1.CSIVolumeSource{Driver: "gcsfuse.run.googleapis.com"}}},
 		}, volumes)
 	})
 
@@ -730,7 +730,7 @@ func TestPod(t *testing.T) {
 						"memory": resource.MustParse("128Mi"),
 					}},
 					VolumeMounts: []corev1.VolumeMount{
-						{Name: "resources-vol-01", MountPath: "/hello/world", SubPath: "new"},
+						{Name: "vol-01", MountPath: "/hello/world", SubPath: "new"},
 					},
 				},
 				{
@@ -752,13 +752,13 @@ func TestPod(t *testing.T) {
 					}},
 					VolumeMounts: []corev1.VolumeMount{
 						{Name: fileVolume.Name, MountPath: "/base/one", ReadOnly: true},
-						{Name: "resources-vol-01", MountPath: "/some/dir"},
+						{Name: "vol-01", MountPath: "/some/dir"},
 					},
 				},
 			},
 			Volumes: []corev1.Volume{
 				fileVolume,
-				{Name: "resources-vol-01", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "one-cloud-run-secret"}}},
+				{Name: "vol-01", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "one-cloud-run-secret"}}},
 			},
 		}, pod.Spec)
 	})
@@ -780,9 +780,9 @@ func TestPod(t *testing.T) {
 			}, substitutions, newFakeSecretSaver(), "hello-world").Pod(t.Context())
 			require.NoError(t, err)
 			assert.Equal(t, []corev1.VolumeMount{
-				{Name: "resources-vol-01", MountPath: "/data1"},
-				{Name: "resources-vol-01", MountPath: "/data2"},
-				{Name: "resources-vol-01", MountPath: "/data3"},
+				{Name: "vol-01", MountPath: "/data1"},
+				{Name: "vol-01", MountPath: "/data2"},
+				{Name: "vol-01", MountPath: "/data3"},
 			}, pod.Spec.Containers[0].VolumeMounts)
 		}
 	})
