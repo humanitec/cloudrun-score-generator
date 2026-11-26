@@ -49,12 +49,12 @@ resources.db.password:
     value: s3cr3t
 `
 
-// writeFile writes content in a temporary directory, converting it to
-// JSON in case of a .json extension, and returns its path.
-func writeFile(t *testing.T, name, content string) string {
+// writeFile writes content in a temporary directory, converted from YAML
+// to JSON if asJSON is set, and returns its path.
+func writeFile(t *testing.T, name, content string, asJSON bool) string {
 	t.Helper()
 	data := []byte(content)
-	if filepath.Ext(name) == ".json" {
+	if asJSON {
 		var err error
 		data, err = yaml.YAMLToJSON(data)
 		require.NoError(t, err)
@@ -75,16 +75,18 @@ func TestGenerate(t *testing.T) {
 	testCases := []struct {
 		name, workloadFile, substitutionsFile string
 		output                                string // --output; empty means the default
+		jsonInputs                            bool   // write the input files as JSON
 		wantJSON                              bool
 	}{
 		{name: "yaml by default", workloadFile: "score.yaml", substitutionsFile: "subs.yml"},
-		{name: "json", workloadFile: "score.json", substitutionsFile: "subs.json", output: "json", wantJSON: true},
+		{name: "json", workloadFile: "score.json", substitutionsFile: "subs.json", jsonInputs: true, output: "json", wantJSON: true},
+		{name: "json without .json extension", workloadFile: "score.yaml", substitutionsFile: "subs", jsonInputs: true},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			args := []string{"generate",
-				"--file", writeFile(t, tc.workloadFile, workloadYAML),
-				"--substitutions", writeFile(t, tc.substitutionsFile, substitutionsYAML),
+				"--file", writeFile(t, tc.workloadFile, workloadYAML, tc.jsonInputs),
+				"--substitutions", writeFile(t, tc.substitutionsFile, substitutionsYAML, tc.jsonInputs),
 				"--service-name", "hello-world-dev",
 			}
 			if tc.output != "" {
@@ -114,14 +116,14 @@ metadata:
 containers:
   main:
     image: busybox:latest
-`))
+`, false))
 	require.Equal(t, 0, code, stderr)
 	assert.Empty(t, stderr)
 }
 
 func TestUsageErrors(t *testing.T) {
-	workload := writeFile(t, "score.yaml", workloadYAML)
-	manifest := writeFile(t, "service.json", `metadata: {name: hello-world}`)
+	workload := writeFile(t, "score.yaml", workloadYAML, false)
+	manifest := writeFile(t, "service.json", `metadata: {name: hello-world}`, true)
 
 	testCases := []struct {
 		name    string
@@ -166,22 +168,22 @@ func TestErrors(t *testing.T) {
 		},
 		{
 			name:    "invalid workload",
-			args:    []string{"generate", "--file", writeFile(t, "score.json", "metadata: {name: x}")},
+			args:    []string{"generate", "--file", writeFile(t, "score.json", "metadata: {name: x}", true)},
 			wantErr: "score.json",
 		},
 		{
 			name:    "workload the generator rejects",
-			args:    []string{"generate", "--file", writeFile(t, "score.yaml", "apiVersion: score.dev/v1b1\nmetadata: {name: x}\ncontainers: {}\n")},
+			args:    []string{"generate", "--file", writeFile(t, "score.yaml", "apiVersion: score.dev/v1b1\nmetadata: {name: x}\ncontainers: {}\n", false)},
 			wantErr: "a Cloud Run service needs at least one container",
 		},
 		{
 			name:    "manifest without a name",
-			args:    []string{"delete-unused-secrets", "--project", "p", "--manifest", writeFile(t, "service.yaml", "apiVersion: serving.knative.dev/v1\nkind: Service\n")},
+			args:    []string{"delete-unused-secrets", "--project", "p", "--manifest", writeFile(t, "service.yaml", "apiVersion: serving.knative.dev/v1\nkind: Service\n", false)},
 			wantErr: "the manifest has no metadata.name",
 		},
 		{
 			name:    "score file instead of a manifest",
-			args:    []string{"delete-unused-secrets", "--project", "p", "--manifest", writeFile(t, "score.yaml", workloadYAML)},
+			args:    []string{"delete-unused-secrets", "--project", "p", "--manifest", writeFile(t, "score.yaml", workloadYAML, false)},
 			wantErr: "score.yaml: not a Cloud Run service manifest",
 		},
 	}
