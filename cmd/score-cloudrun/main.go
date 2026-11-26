@@ -18,14 +18,12 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -136,8 +134,8 @@ Only ${resources.*} placeholders are resolved. The Score specification must be n
 By default secrets are not saved and the manifest references their "latest" version, which is
 enough to preview the manifest. Pass --save-secrets to store them in Google Secret Manager,
 which is required for a manifest that is deployed.`, stderr)
-	file := fs.String("file", "", "Score workload file, .yaml, .yml or .json (required)")
-	subsFile := fs.String("substitutions", "", "substitutions file, .yaml, .yml or .json: a map of placeholders, such as resources.db.host, to {value: ...} or {secret: {type: direct, value: ...}}")
+	file := fs.String("file", "", "Score workload file, YAML or JSON (required)")
+	subsFile := fs.String("substitutions", "", "substitutions file, YAML or JSON: a map of placeholders, such as resources.db.host, to {value: ...} or {secret: {type: direct, value: ...}}")
 	serviceName := fs.String("service-name", "", "Cloud Run service name, instead of the workload's annotation or metadata.name")
 	saveSecrets := fs.Bool("save-secrets", false, "store secrets in Google Secret Manager (requires --project and --region)")
 	project := fs.String("project", "", "Google Cloud project to store the secrets in")
@@ -225,7 +223,7 @@ May be used to clean unused secrets after a new version of the service manifest 
 
 To delete all secrets of a service, for example after deleting the service, pass
 --service and --all instead of --manifest.`, stderr)
-	manifestFile := fs.String("manifest", "", "deployed service manifest, .yaml, .yml or .json; its secrets are kept")
+	manifestFile := fs.String("manifest", "", "deployed service manifest, YAML or JSON; its secrets are kept")
 	service := fs.String("service", "", "Cloud Run service name, with --all")
 	all := fs.Bool("all", false, "delete all secrets of --service")
 	project := fs.String("project", "", "Google Cloud project the secrets are in (required)")
@@ -285,24 +283,13 @@ func readManifest(path string) (string, []string, error) {
 	return manifest.Metadata.Name, keep, nil
 }
 
-// readFile decodes the file at path into out, as JSON or YAML depending on its extension.
+// readFile decodes the YAML or JSON file at path into out.
 func readFile(path string, out any) error {
-	ext := strings.ToLower(filepath.Ext(path))
-	var unmarshal func([]byte, any) error
-	switch ext {
-	case ".json":
-		unmarshal = json.Unmarshal
-	case ".yaml", ".yml":
-		unmarshal = func(b []byte, v any) error { return yaml.Unmarshal(b, v) }
-	default:
-		return usageErrorf("%s: unsupported file extension %q, expected .yaml, .yml or .json", path, ext)
-	}
-
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
-	if err := unmarshal(raw, out); err != nil {
+	if err := yaml.Unmarshal(raw, out); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
 	return nil
