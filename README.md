@@ -220,9 +220,8 @@ Cloud Run limitations:
 ## Command line tool
 
 `score-cloudrun generate` prints the service manifest as YAML, or as JSON with `--output json`.
-The workload and the substitutions are read from `.yaml`, `.yml` or `.json` files. The format is
-chosen by the file extension. The substitutions file maps placeholders to values, in the format
-of `score.Substitutions`:
+The workload and the substitutions are read from YAML or JSON files.
+The substitutions file maps placeholders to values, in the format of `score.Substitutions`:
 
 ```yaml
 resources.db.host:

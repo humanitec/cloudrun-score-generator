@@ -79,7 +79,6 @@ func TestGenerate(t *testing.T) {
 	}{
 		{name: "yaml by default", workloadFile: "score.yaml", substitutionsFile: "subs.yml"},
 		{name: "json", workloadFile: "score.json", substitutionsFile: "subs.json", output: "json", wantJSON: true},
-		{name: "mixed inputs", workloadFile: "score.YAML", substitutionsFile: "subs.json", output: "yaml"},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -135,7 +134,6 @@ func TestUsageErrors(t *testing.T) {
 		{name: "positional arguments", args: []string{"generate", "--file", workload, "extra"}, wantErr: "unexpected arguments: extra"},
 		{name: "generate without file", args: []string{"generate"}, wantErr: "--file is required"},
 		{name: "unknown output format", args: []string{"generate", "--file", workload, "--output", "toml"}, wantErr: `--output must be yaml or json, got "toml"`},
-		{name: "unsupported extension", args: []string{"generate", "--file", "score.toml"}, wantErr: `unsupported file extension ".toml"`},
 		{name: "save secrets without project", args: []string{"generate", "--file", workload, "--save-secrets", "--region", "europe-west1"}, wantErr: "--save-secrets requires --project and --region"},
 		{name: "save secrets without region", args: []string{"generate", "--file", workload, "--save-secrets", "--project", "p"}, wantErr: "--save-secrets requires --project and --region"},
 		{name: "project without save secrets", args: []string{"generate", "--file", workload, "--project", "p"}, wantErr: "only used with --save-secrets"},
